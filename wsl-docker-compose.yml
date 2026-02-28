@@ -24,11 +24,13 @@ services:
       CORS_ORIGIN: "*"
       WORKSPACE_EXTRA_PATHS: /workspace
       LLM_PROVIDER: ${LLM_PROVIDER:-dashscope}
-      LLM_MODEL_NAME: ${LLM_MODEL_NAME:-qwen3-max-preview}
+      LLM_MODEL_NAME: ${LLM_MODEL_NAME:-qwen3-max}
       LLM_API_KEY: ${LLM_API_KEY}
       CODE_INDEX_SERVICE_URL: http://code-index-service:8080
+      AGENT_OUTPUT_DIR: /app/agent-outputs
     volumes:
       - uploads_data:/app/uploads
+      - ./agent-outputs:/app/agent-outputs
       - /home/zhuangxiaosen/projects/MockProject:/workspace/MockProject:ro
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:8000/health"]

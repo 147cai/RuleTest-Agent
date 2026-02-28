@@ -3,3 +3,4 @@ dist/
 .env
 .claude/settings.local.json
 docs
+agent-outputs/
