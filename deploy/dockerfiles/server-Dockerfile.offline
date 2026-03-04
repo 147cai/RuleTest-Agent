@@ -1,0 +1,90 @@
+# TestAgent Server Dockerfile（离线构建版）
+# 适用于无互联网的内网环境（OracleLinux 7 目标机）
+#
+# 构建前提：
+#   offline-wheels/server/      - Alpine musl 兼容 pip wheels
+#   offline-wheels/requests-http-mcp/ - 本地 Python 包
+#   offline-npm-cache/server/npm-cache/ - npm 离线缓存
+#
+# Build context: TestAgent/（项目根目录）
+# docker compose -f deploy/docker-compose.prod.yml build server
+
+# ─── 阶段1: 构建 Node.js ─────────────────────────────────────────────────────
+FROM node:20-alpine AS builder
+
+RUN apk add --no-cache python3 make g++
+
+WORKDIR /app
+
+COPY Client/server/package*.json ./
+COPY Client/server/prisma ./prisma/
+
+# 使用离线 npm 缓存构建
+COPY offline-npm-cache/server/npm-cache /root/.npm
+RUN npm ci --prefer-offline && npx prisma generate
+
+COPY Client/server/tsconfig.json ./
+COPY Client/server/src ./src/
+RUN npm run build
+
+# ─── 阶段2: 生产镜像 ──────────────────────────────────────────────────────────
+FROM node:20-alpine
+
+RUN apk add --no-cache python3 py3-pip make g++ bash curl
+
+WORKDIR /app
+
+COPY Client/server/package*.json ./
+COPY Client/server/prisma ./prisma/
+
+# 使用离线 npm 缓存安装生产依赖
+COPY offline-npm-cache/server/npm-cache /root/.npm
+RUN npm ci --omit=dev --prefer-offline && npx prisma generate
+
+# 从构建阶段复制编译产物
+COPY --from=builder /app/dist ./dist/
+COPY Client/server/scripts ./scripts/
+
+# 复制 Python Agent 代码
+COPY Client/agent /app/agent/
+COPY Client/prompts /app/prompts/
+COPY Client/.testagent /app/.testagent/
+COPY Client/requirements.txt /app/requirements.txt
+COPY tests /app/tests/
+COPY pytest.ini /app/pytest.ini
+
+# 复制离线 pip wheels
+COPY offline-wheels/server /tmp/wheels
+COPY offline-wheels/requests-http-mcp /tmp/requests-http-mcp
+
+# 从本地 wheels 安装 Python 依赖（无网络）
+# 排除不兼容 Alpine musl 的 ML 包：chromadb / faiss-cpu / sentence-transformers / onnxruntime
+RUN pip3 install --no-cache-dir --break-system-packages \
+    --no-index --find-links /tmp/wheels \
+    agentscope json5 requests rank-bm25 toml loguru pydantic \
+    httpx jsonpath-ng pyyaml jsonschema python-docx jinja2 \
+    python-dotenv rich anyio "python-socketio[asyncio_client]" \
+    pytest pytest-asyncio \
+    && pip3 install --no-cache-dir --break-system-packages \
+    /tmp/requests-http-mcp
+
+# 清理构建临时文件
+RUN rm -rf /tmp/wheels /tmp/requests-http-mcp
+
+# 创建非 root 用户
+RUN addgroup -g 1001 -S nodejs \
+    && adduser -S nodejs -u 1001
+
+# 创建运行时目录并设置权限
+RUN mkdir -p /app/storage/memory /app/storage/chat /app/storage/cache \
+             /app/uploads /app/logs /app/agent-outputs \
+    && chown -R nodejs:nodejs /app
+
+USER nodejs
+
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+  CMD wget --no-verbose --tries=1 --spider http://127.0.0.1:8000/health || exit 1
+
+EXPOSE 8000
+
+CMD ["node", "dist/index.js"]

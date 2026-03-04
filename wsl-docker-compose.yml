@@ -6,8 +6,8 @@ services:
   # TestAgent Server (Fastify API)
   server:
     build:
-      context: .
-      dockerfile: k8s/server-Dockerfile
+      context: ..
+      dockerfile: TestAgent/k8s/server-Dockerfile
     container_name: testagent-server
     restart: unless-stopped
     ports:

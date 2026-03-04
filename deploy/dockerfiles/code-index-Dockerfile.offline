@@ -1,0 +1,52 @@
+# TestAgent Code Index Service Dockerfile（离线构建版）
+# 适用于无互联网的内网环境
+#
+# 构建前提：
+#   offline-wheels/code-index/ - python:3.11-slim glibc 兼容 pip wheels
+#
+# Build context: TestAgent/（项目根目录）
+# docker compose -f deploy/docker-compose.prod.yml build code-index-service
+
+# ─── 阶段1: 安装依赖 ──────────────────────────────────────────────────────────
+FROM python:3.11-slim AS builder
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc g++ \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# 复制离线 wheels 并安装
+COPY offline-wheels/code-index /tmp/wheels
+COPY Client/code-index-service/requirements.txt .
+
+RUN pip install --no-cache-dir \
+    --no-index --find-links /tmp/wheels \
+    -r requirements.txt
+
+# ─── 阶段2: 生产镜像 ──────────────────────────────────────────────────────────
+FROM python:3.11-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+COPY --from=builder /usr/local/bin /usr/local/bin
+
+COPY Client/code-index-service/src ./src
+COPY Client/code-index-service/requirements.txt .
+
+RUN useradd -r -u 1001 indexer \
+    && mkdir -p /data && chown indexer:indexer /data
+
+USER indexer
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \
+    CMD curl -f http://127.0.0.1:8080/health || exit 1
+
+EXPOSE 8080
+
+CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8080"]

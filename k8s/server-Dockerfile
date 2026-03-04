@@ -1,6 +1,9 @@
 # TestAgent Server Dockerfile
 # 多阶段构建：先编译 TypeScript，再构建生产镜像
 # 使用 Alpine 镜像，排除不兼容 musl 的 ML 重依赖
+#
+# Build context: LLMProjects/ (parent of TestAgent/)
+# docker-compose wsl-docker-compose.yml sets context: ..
 
 # 阶段1: 构建 Node.js
 FROM node:20-alpine AS builder
@@ -10,15 +13,15 @@ RUN apk add --no-cache python3 make g++
 WORKDIR /app
 
 # 先复制 package 文件，利用 Docker 缓存层
-COPY Client/server/package*.json ./
-COPY Client/server/prisma ./prisma/
+COPY TestAgent/Client/server/package*.json ./
+COPY TestAgent/Client/server/prisma ./prisma/
 
 # 安装所有依赖（包含 devDependencies 用于编译）
 RUN npm ci && npx prisma generate
 
 # 复制源码并编译
-COPY Client/server/tsconfig.json ./
-COPY Client/server/src ./src/
+COPY TestAgent/Client/server/tsconfig.json ./
+COPY TestAgent/Client/server/src ./src/
 RUN npm run build
 
 # 阶段2: 生产镜像
@@ -28,28 +31,35 @@ RUN apk add --no-cache python3 py3-pip make g++ bash curl
 
 WORKDIR /app
 
-COPY Client/server/package*.json ./
-COPY Client/server/prisma ./prisma/
+COPY TestAgent/Client/server/package*.json ./
+COPY TestAgent/Client/server/prisma ./prisma/
 
 # 仅安装生产依赖
 RUN npm ci --omit=dev && npx prisma generate
 
 # 从构建阶段复制编译产物
 COPY --from=builder /app/dist ./dist/
-COPY Client/server/scripts ./scripts/
+COPY TestAgent/Client/server/scripts ./scripts/
 
 # 复制 Python Agent 代码和依赖
-COPY Client/agent /app/agent/
-COPY Client/prompts /app/prompts/
-COPY Client/.testagent /app/.testagent/
-COPY Client/requirements.txt /app/requirements.txt
+COPY TestAgent/Client/agent /app/agent/
+COPY TestAgent/Client/prompts /app/prompts/
+COPY TestAgent/Client/.testagent /app/.testagent/
+COPY TestAgent/Client/requirements.txt /app/requirements.txt
+COPY TestAgent/tests /app/tests/
+COPY TestAgent/pytest.ini /app/pytest.ini
+
+# 复制 requests-http-mcp (stateful HTTP MCP server, sibling of TestAgent/)
+COPY requests-http-mcp /tmp/requests-http-mcp
 
 # 安装 Python 依赖，排除 Alpine 不兼容的 ML 包（chromadb/onnxruntime/sentence-transformers）
 # 这些是向量记忆系统，API 接口测试核心功能不依赖
 RUN pip3 install --no-cache-dir --break-system-packages \
     agentscope json5 requests rank-bm25 toml loguru pydantic \
     httpx jsonpath-ng pyyaml jsonschema python-docx jinja2 \
-    python-dotenv rich anyio "python-socketio[asyncio_client]"
+    python-dotenv rich anyio "python-socketio[asyncio_client]" \
+    pytest pytest-asyncio \
+    /tmp/requests-http-mcp
 
 # 创建非 root 用户
 RUN addgroup -g 1001 -S nodejs \
