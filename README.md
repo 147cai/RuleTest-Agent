@@ -117,6 +117,17 @@ cp .testagent/settings.example.json .testagent/settings.json
 cd ../Server
 cp mcp-settings.example.json mcp-settings.json
 ```
+创建 .env 文件
+```bash
+cp .env.example .env
+```
+编辑 .env 文件，配置数据库连接和 Redis 缓存。
+# 数据库连接字符串（修改成自己的）
+DATABASE_URL=postgresql://mcp_user:mcp_password@localhost:5432/testagent
+
+# JWT 密钥（可以随便设置一个字符串）
+JWT_SECRET="your-secret-key-here"
+
 
 ### 运行
 

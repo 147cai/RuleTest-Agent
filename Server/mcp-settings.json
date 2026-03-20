@@ -1,0 +1,20 @@
+{
+  "mcpServers": {
+    "testagent": {
+      "command": "node",
+      "args": ["Server/dist/index.js"],
+      "env": {},
+      "enabled": true,
+      "group": "custom_tools",
+      "displayName": "TestAgent 自定义工具"
+    },
+    "playwright": {
+      "command": "node",
+      "args": ["Server/node_modules/@playwright/mcp/cli.js", "--browser", "chromium"],
+      "env": {},
+      "enabled": true,
+      "group": "browser_tools",
+      "displayName": "浏览器自动化"
+    }
+  }
+}
