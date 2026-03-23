@@ -3,4 +3,25 @@ dist/
 .env
 .claude/settings.local.json
 docs
-agent-outputs/tests/__pycache__/
+agent-outputs/
+
+# Python 缓存
+__pycache__/
+*.pyc
+*.pyo
+
+# 日志 & 数据库 & 运行时文件
+*.log
+*.db
+*.sqlite
+
+# Node lock & build
+package-lock.json
+
+# IDE
+.vscode/
+.idea/
+
+# 系统文件
+.DS_Store
+Thumbs.db
